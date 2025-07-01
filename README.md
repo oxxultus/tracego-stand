@@ -16,7 +16,7 @@ TraceGo 배송 로봇 시스템에 물건을 전달해주는 선반 입니다.
 해당 리포지토리를 사용하려면 PlatformIO를 사용해야 합니다.
 
 ```
-git clone https://github.com/oxxultus/tracego-server.git
+git clone https://github.com/oxxultus/tracego-stand.git
 ```
 
 - 빌드를 진행한 뒤 업로드를 진행하면됩니다.
