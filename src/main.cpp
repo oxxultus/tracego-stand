@@ -388,7 +388,9 @@ void setServerHandler() {
         prefs.clear();  // 모든 설정 삭제
         prefs.end();
     });
-
+    
+    // TODO: 마이크로 서보 모터 작동로직 추가
+    // RFID 카드를 들어올리는 로직이 필요하다 외부에 접근 가능하게 해야한다 예) 카트-> 선반으로 명령전달 시 로직이 실행되어야함
 
     serverService->setStartStandHandler([](const String& uid) -> String {
         Serial.println("[외부 핸들러] /start-stand 요청: UID = " + uid);
@@ -434,6 +436,8 @@ void handleStartStandRequest(const String& uid) {
 
 // [UTILITY-2] 작업 아이템을 확인하는 함수입니다.
 void sendCheckWorkingRequest(const String& uid) {
+    // TODO: 재시도 로직 추가 (예: 3회 시도 후 실패 시 알림 등)
+
     HTTPClient http;
 
     // 1. check 요청 URL 생성
@@ -475,6 +479,7 @@ void sendCheckWorkingRequest(const String& uid) {
 
 // [UTILITY-3] 작업 아이템을 완료하는 함수입니다.
 void sendEndWorkingRequest(const String& uid) {
+    // TODO: 재시도 로직 추가 (예: 3회 시도 후 실패 시 알림 등)
     HTTPClient endHttp;
     String endUrl = "http://" + String(config.serverIP) + ":" + String(config.serverPort) + String(config.endWorkingList) + uid;
 
@@ -516,7 +521,10 @@ void startStandMoter(const String& uid, const int& count) {
     
 }
 
+// TODO: 마이크로 서보 모터 작동로직 함수 추가
+
 // END OF PROGRAM =========================================================================================================
 // 이 파일은 TraceGo-Stand 프로젝트의 메인 파일로, 초기 설정 및 서버 핸들러 등록을 담당합니다.
 // WiFi 연결, 서버 시작, 모듈 초기화 등의 기능을 포함하고 있습니다.
 // 또한, 작업 아이템 확인 및 완료 요청을 위한 유틸리티 함수도 포함되어 있습니다.
+
