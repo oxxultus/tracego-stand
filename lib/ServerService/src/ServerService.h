@@ -28,6 +28,8 @@ private:
 
     // 선반조작 핸들러
     std::function<String(const String& uid)> startStandHandler = nullptr;
+    std::function<String(const String& uid)> upRfidCardHandler = nullptr;
+    std::function<String(const String& uid)> downRfidCardHandler = nullptr;
 
     void setupRoutes();       // 라우팅 등록
 
@@ -48,6 +50,8 @@ public:
     void setStatusViewHandler(std::function<String(void)> handler);
 
     void setStartStandHandler(std::function<String(const String& uid)> handler);
+    void setUpRfidCardHandler(std::function<String(const String& uid)> handler);
+    void setDownRfidCardHandler(std::function<String(const String& uid)> handler);
 
     // 핸들러 등록 여부 확인
     [[nodiscard]] bool isStatusHandlerSet() const;
@@ -57,6 +61,8 @@ public:
     [[nodiscard]] bool isAdvancedPageHandlerSet() const;
     [[nodiscard]] bool isStatusViewHandlerSet() const;
     [[nodiscard]] bool isStartStandHandlerSet() const;
+    [[nodiscard]] bool isUpRfidCardHandlerSet() const;
+    [[nodiscard]] bool isDownRfidCardHandlerSet() const;
 };
 
 #endif // WIFI_WEB_SERVICE_H

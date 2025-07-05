@@ -42,6 +42,8 @@ void ServerService::setUpdateConfigHandler(std::function<String(String)> handler
 void ServerService::setAdvancedPageHandler(std::function<String(void)> handler) { advancedPageHandler = handler; }
 void ServerService::setStatusViewHandler(std::function<String(void)> handler) { statusViewHandler = handler; }
 void ServerService::setStartStandHandler(std::function<String(const String& uid)> handler) { startStandHandler = handler; }
+void ServerService::setUpRfidCardHandler(std::function<String(const String& uid)> handler) { upRfidCardHandler = handler; }
+void ServerService::setDownRfidCardHandler(std::function<String(const String& uid)> handler) { downRfidCardHandler = handler; }
 
 // ========== 라우팅 등록 =====================================================================================
 void ServerService::setupRoutes() {
@@ -99,29 +101,79 @@ void ServerService::setupRoutes() {
     }
 
     if (startStandHandler) {
-    server->on("/start-stand", HTTP_GET, [this]() {
-        if (!server->hasArg("uid")) {
-            server->send(400, "text/plain", "uid 파라미터가 필요합니다");
-            return;
-        }
+        server->on("/start-stand", HTTP_GET, [this]() {
+            if (!server->hasArg("uid")) {
+                server->send(400, "text/plain", "uid 파라미터가 필요합니다");
+                return;
+            }
 
-        String uid = server->arg("uid");
-        
-        // 비어있는 uid 방지
-        if (uid.length() == 0) {
-            server->send(400, "text/plain", "uid는 비어있을 수 없습니다");
-            return;
-        }
+            String uid = server->arg("uid");
+            
+            // 비어있는 uid 방지
+            if (uid.length() == 0) {
+                server->send(400, "text/plain", "uid는 비어있을 수 없습니다");
+                return;
+            }
 
-        String result = startStandHandler(uid);  // 외부 핸들러 실행
+            String result = startStandHandler(uid);  // 외부 핸들러 실행
 
-        if (result == "200") {
-            server->send(200, "text/plain", "작업 시작됨");
-        } else {
-            server->send(400, "text/plain", "유효하지 않은 UID");
-        }
-    });
-}
+            if (result == "200") {
+                server->send(200, "text/plain", "작업 시작됨");
+            } else {
+                server->send(400, "text/plain", "유효하지 않은 UID");
+            }
+        });
+    }
+
+    if (upRfidCardHandler) {
+        server->on("/up-rfid", HTTP_GET, [this]() {
+            if (!server->hasArg("uid")) {
+                server->send(400, "text/plain", "uid 파라미터가 필요합니다");
+                return;
+            }
+
+            String uid = server->arg("uid");
+            
+            // 비어있는 uid 방지
+            if (uid.length() == 0) {
+                server->send(400, "text/plain", "uid는 비어있을 수 없습니다");
+                return;
+            }
+
+            String result = upRfidCardHandler(uid);  // 외부 핸들러 실행
+
+            if (result == "200") {
+                server->send(200, "text/plain", "작업 시작됨");
+            } else {
+                server->send(400, "text/plain", "유효하지 않은 UID");
+            }
+        });
+    }
+
+    if (downRfidCardHandler) {
+        server->on("/down-rfid", HTTP_GET, [this]() {
+            if (!server->hasArg("uid")) {
+                server->send(400, "text/plain", "uid 파라미터가 필요합니다");
+                return;
+            }
+
+            String uid = server->arg("uid");
+            
+            // 비어있는 uid 방지
+            if (uid.length() == 0) {
+                server->send(400, "text/plain", "uid는 비어있을 수 없습니다");
+                return;
+            }
+
+            String result = downRfidCardHandler(uid);  // 외부 핸들러 실행
+
+            if (result == "200") {
+                server->send(200, "text/plain", "작업 시작됨");
+            } else {
+                server->send(400, "text/plain", "유효하지 않은 UID");
+            }
+        });
+    }
 
 
 }
@@ -134,3 +186,5 @@ bool ServerService::isUpdateConfigHandlerSet() const { return static_cast<bool>(
 bool ServerService::isAdvancedPageHandlerSet() const { return static_cast<bool>(advancedPageHandler); }
 bool ServerService::isStatusViewHandlerSet() const { return static_cast<bool>(statusViewHandler); }
 bool ServerService::isStartStandHandlerSet() const { return static_cast<bool>(startStandHandler); }
+bool ServerService::isUpRfidCardHandlerSet() const { return static_cast<bool>(upRfidCardHandler); }
+bool ServerService::isDownRfidCardHandlerSet() const { return static_cast<bool>(downRfidCardHandler); }

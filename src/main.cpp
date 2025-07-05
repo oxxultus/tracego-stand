@@ -14,6 +14,8 @@ void handleStartStandRequest(const String& uid);                    // [UTILITY-
 void sendCheckWorkingRequest(const String& uid);                    // [UTILITY-2] 작업 아이템을 확인하는 함수입니다.
 void sendEndWorkingRequest(const String& uid);                      // [UTILITY-3] 작업 아이템을 완료하는 함수입니다.
 void startStandMoter(const String& uid, const int& count);          // [MOTER-1] 선반 조작을 시작하는 함수입니다.
+void upRfidCard(const String& uid);                                 // [MOTER-2] RFID 카드 올리기 함수입니다.
+void downRfidCard(const String& uid);                               // [MOTER-3] RFID 카드 내리기 함수입니다;
 
 // 객체 생성 =============================================================================================================
 WiFiConnector wifi;                             // WiFiConnect 객체 생성
@@ -409,6 +411,40 @@ void setServerHandler() {
         }
     });
 
+    serverService->setUpRfidCardHandler([](const String& uid) -> String {
+        Serial.println("[외부 핸들러] /up-rfid 요청: UID = " + uid);
+
+        // 상품 UID가 유효한지 확인
+        if (uid == config.firstProductUid || uid == config.secondProductUid) {
+            Serial.println("[외부 핸들러] /up-rfid 요청: 유효한 UID");
+
+            // RFID 카드 들어올리기
+            upRfidCard(uid);
+
+            return "200";
+        } else {
+            Serial.println("[외부 핸들러] /up-rfid 요청: 유효하지 않은 UID");
+            return "400";
+        }
+    });
+
+    serverService->setDownRfidCardHandler([](const String& uid) -> String {
+        Serial.println("[외부 핸들러] /down-rfid 요청: UID = " + uid);
+
+        // 상품 UID가 유효한지 확인
+        if (uid == config.firstProductUid || uid == config.secondProductUid) {
+            Serial.println("[외부 핸들러] /down-rfid 요청: 유효한 UID");
+
+            // RFID 카드 내리기
+            downRfidCard(uid);
+
+            return "200";
+        } else {
+            Serial.println("[외부 핸들러] /down-rfid 요청: 유효하지 않은 UID");
+            return "400";
+        }
+    });
+
     Serial.println("[setServerHandler][1/2] 내장 서버 API 실행 함수 등록 확인 절차 시작");
         auto printHandlerStatus = [](const char* name, bool status) {
             Serial.print("[");
@@ -424,6 +460,8 @@ void setServerHandler() {
         printHandlerStatus("/status-view", serverService->isStatusViewHandlerSet());
         printHandlerStatus("/reset-config",  serverService->isResetConfigHandlerSet());
         printHandlerStatus("/start-stand", serverService->isStartStandHandlerSet());
+        printHandlerStatus("/up-rfid", serverService->isUpRfidCardHandlerSet());
+        printHandlerStatus("/down-rfid", serverService->isDownRfidCardHandlerSet());
     Serial.println("[setServerHandler][2/2] 내장 서버 API 실행 함수 등록 절차 완료\n");
 }
 
@@ -436,64 +474,101 @@ void handleStartStandRequest(const String& uid) {
 
 // [UTILITY-2] 작업 아이템을 확인하는 함수입니다.
 void sendCheckWorkingRequest(const String& uid) {
-    // TODO: 재시도 로직 추가 (예: 3회 시도 후 실패 시 알림 등)
-
     HTTPClient http;
 
     // 1. check 요청 URL 생성
     String checkUrl = "http://" + String(config.serverIP) + ":" + String(config.serverPort) + String(config.checkWorkingList) + uid;
-    http.begin(checkUrl);
 
-    int code = http.GET(); // check 응답 코드
-    Serial.println("HTTP 상태 코드: " + String(code));
+    int code = -1;
+    String body;
 
-    if (code == 200) {
-        String body = http.getString(); // 응답 본문 (JSON 등)
-        Serial.println("작업 있음 → 응답 내용: " + body);
+    // 최대 3회 재시도
+    const int maxAttempts = 3;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        Serial.println("[" + String(attempt) + "차 시도] 작업 요청 중: " + checkUrl);
 
-        // 1. JSON 파싱 (count 추출)
-        JsonDocument doc;  // 자동 크기 조절되도록]
+        http.begin(checkUrl);
+        code = http.GET(); // check 응답 코드
+        Serial.println("HTTP 상태 코드: " + String(code));
 
-        DeserializationError error = deserializeJson(doc, body);
+        if (code > 0) {
+            // 정상 응답이면 본문 수신 및 처리
+            if (code == 200) {
+                body = http.getString();
+                Serial.println("작업 있음 → 응답 내용: " + body);
 
-        if (error) {
-            Serial.print("JSON 파싱 실패: ");
-            Serial.println(error.c_str());
+                JsonDocument doc;
+                DeserializationError error = deserializeJson(doc, body);
+
+                if (error) {
+                    Serial.print("JSON 파싱 실패: ");
+                    Serial.println(error.c_str());
+                } else {
+                    if (doc["count"].is<int>()) {
+                        int count = doc["count"];
+                        Serial.println("작업 수량 (count): " + String(count));
+                        startStandMoter(uid, count); // 선반 조작 시작
+                    } else {
+                        Serial.println("응답에 'count' 필드가 없습니다.");
+                    }
+                }
+            } else if (code == 204) {
+                Serial.println("서버에 작업 리스트가 없음 (204)");
+            } else if (code == 404) {
+                Serial.println("UID에 해당하는 작업 없음 (404)");
+            } else {
+                Serial.println("예상 외 응답 코드: " + String(code));
+            }
+
+            http.end(); // 요청 종료
+            return; // 정상 응답 받았으므로 함수 종료
         } else {
-            int count = doc["count"]; // JSON에서 count 추출
-            Serial.println("작업 수량 (count): " + String(count));
-            
-            //TODO: 여기서 작업 아이템을 처리하는 로직을 추가할 수 있습니다.
-            startStandMoter(uid, count); // 선반 조작 시작
+            Serial.print("요청 실패 (오류): ");
+            Serial.println(http.errorToString(code));
+            http.end();
+            delay(500); // 다음 시도 전 잠깐 대기
         }
-    } else if (code == 204) {
-        Serial.println("서버에 작업 리스트가 없음 (204)");
-    } else if (code == 404) {
-        Serial.println("UID에 해당하는 작업 없음 (404)");
-    } else {
-        Serial.println("예상 외 응답 코드: " + String(code));
     }
 
-    http.end(); // check 요청 종료
+    // 재시도 후에도 실패한 경우
+    Serial.println("⚠️ 요청 실패 - 최대 재시도 횟수 초과 (" + String(maxAttempts) + "회)");
 }
 
 // [UTILITY-3] 작업 아이템을 완료하는 함수입니다.
 void sendEndWorkingRequest(const String& uid) {
-    // TODO: 재시도 로직 추가 (예: 3회 시도 후 실패 시 알림 등)
     HTTPClient endHttp;
     String endUrl = "http://" + String(config.serverIP) + ":" + String(config.serverPort) + String(config.endWorkingList) + uid;
 
-    endHttp.begin(endUrl);
-    int endCode = endHttp.GET();
+    int endCode = -1;
+    String endBody;
 
-    if (endCode == 200) {
-        String endBody = endHttp.getString();
-        Serial.println("작업 완료 요청 성공 → 응답 내용: " + endBody);
-    } else {
-        Serial.println("작업 완료 요청 실패 → 응답 코드: " + String(endCode));
+    const int maxAttempts = 3;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        Serial.println("[" + String(attempt) + "차 시도] 작업 완료 요청 중: " + endUrl);
+
+        endHttp.begin(endUrl);
+        endCode = endHttp.GET();
+
+        if (endCode > 0) {
+            if (endCode == 200) {
+                endBody = endHttp.getString();
+                Serial.println("작업 완료 요청 성공 → 응답 내용: " + endBody);
+            } else {
+                Serial.println("작업 완료 요청 실패 → 응답 코드: " + String(endCode));
+            }
+
+            endHttp.end();
+            return; // 성공했거나 실패했더라도 응답 받았으면 종료
+        } else {
+            Serial.print("요청 실패 (오류): ");
+            Serial.println(endHttp.errorToString(endCode));
+            endHttp.end();
+            delay(500); // 재시도 전 대기
+        }
     }
 
-    endHttp.end(); // 요청 종료
+    // 재시도 끝난 후에도 실패한 경우
+    Serial.println("⚠️ 작업 완료 요청 실패 - 최대 재시도 횟수 초과 (" + String(maxAttempts) + "회)");
 }
 
 // MOTER FUNCTION =========================================================================================================
@@ -521,10 +596,27 @@ void startStandMoter(const String& uid, const int& count) {
     
 }
 
-// TODO: 마이크로 서보 모터 작동로직 함수 추가
+// [MOTER-2] RFID 카트를 들어올리는 함수입니다.
+void upRfidCard(const String& uid) {
+    Serial.println("[MOTER] RFID 카드 들어올리기 시작: UID = " + uid);
+    if (uid == config.firstProductUid) {
+        Serial.println("[MOTER] RFID 카드 들어올리기 시작: 첫 번째 상품 UID");
+        
+    } else if (uid == config.secondProductUid) {
+        Serial.println("[MOTER] RFID 카드 들어올리기 시작: 두 번째 상품 UID");
+        
+    }
+}
 
-// END OF PROGRAM =========================================================================================================
-// 이 파일은 TraceGo-Stand 프로젝트의 메인 파일로, 초기 설정 및 서버 핸들러 등록을 담당합니다.
-// WiFi 연결, 서버 시작, 모듈 초기화 등의 기능을 포함하고 있습니다.
-// 또한, 작업 아이템 확인 및 완료 요청을 위한 유틸리티 함수도 포함되어 있습니다.
+// [MOTER-3] RFID 카트를 내리는 함수입니다.
+void downRfidCard(const String& uid) {
+    Serial.println("[MOTER] RFID 카드 내려놓기 시작: UID = " + uid);
+    
+    if (uid == config.firstProductUid) {
+        Serial.println("[MOTER] RFID 카드 내려놓기 시작: 첫 번째 상품 UID");
 
+    } else if (uid == config.secondProductUid) {
+        Serial.println("[MOTER] RFID 카드 내려놓기 시작: 두 번째 상품 UID");
+        
+    }
+}
