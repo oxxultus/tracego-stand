@@ -18,6 +18,10 @@ struct Config {
   String checkWorkingList;
   String endWorkingList;
 
+  // 상품 Uid
+  String firstProductUid;
+  String secondProductUid;
+
   // 시리얼 통신 속도
   int serialBaudrate;
   int serial2Baudrate;

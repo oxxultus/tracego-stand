@@ -18,12 +18,6 @@ private:
     WebServer* server = nullptr;     // WebServer 인스턴스를 포인터로 변경
 
     // 라우팅 핸들러 콜백 함수들 //TODO: 추가해야하는 것
-    std::function<void()> startHandler = nullptr;
-    std::function<void()> goHandler = nullptr;
-    std::function<void()> stopHandler = nullptr;
-    std::function<void()> resetHandler = nullptr;
-    std::function<void(const String&)> postHandler = nullptr;
-
     std::function<String(void)> statusHandler = nullptr;
     std::function<void()> resetConfigHandler = nullptr;
 
@@ -31,6 +25,9 @@ private:
     std::function<String(String)> updateConfigHandler = nullptr;
     std::function<String(void)> advancedPageHandler = nullptr;
     std::function<String(void)> statusViewHandler = nullptr;
+
+    // 선반조작 핸들러
+    std::function<String(const String& uid)> startStandHandler = nullptr;
 
     void setupRoutes();       // 라우팅 등록
 
@@ -41,13 +38,7 @@ public:
     void begin();
     void handle();
 
-    // 핸들러 등록 메서드 //TODO: 추가해야하는 것
-    void setStartHandler(const std::function<void()> &handler);
-    void setGoHandler(const std::function<void()> &handler);
-    void setStopHandler(const std::function<void()> &handler);
-    void setResetHandler(const std::function<void()> &handler);
-    void setPostHandler(const std::function<void(const String&)> &handler);
-
+    // 핸들러 등록 메서드
     void setStatusHandler(const std::function<String(void)> &handler);
     void setResetConfigHandler(const std::function<void()> &handler);
 
@@ -56,22 +47,16 @@ public:
     void setAdvancedPageHandler(std::function<String(void)> handler);
     void setStatusViewHandler(std::function<String(void)> handler);
 
-    // HTTP 요청 전송 메서드
-    static String sendGETRequest(const char* host, uint16_t port, const String& pathWithParams);
-    static String sendPostRequest(const char* host, uint16_t port, const String& path, const JsonDocument& jsonDoc);
+    void setStartStandHandler(std::function<String(const String& uid)> handler);
 
-    // 핸들러 등록 여부 확인 //TODO: 추가해야하는 것
-    [[nodiscard]] bool isStartHandlerSet() const;
-    [[nodiscard]] bool isGoHandlerSet() const;
-    [[nodiscard]] bool isStopHandlerSet() const;
-    [[nodiscard]] bool isResetHandlerSet() const;
-
+    // 핸들러 등록 여부 확인
     [[nodiscard]] bool isStatusHandlerSet() const;
     [[nodiscard]] bool isResetConfigHandlerSet() const;
     [[nodiscard]] bool isMainPageHandlerSet() const;
     [[nodiscard]] bool isUpdateConfigHandlerSet() const;
     [[nodiscard]] bool isAdvancedPageHandlerSet() const;
     [[nodiscard]] bool isStatusViewHandlerSet() const;
+    [[nodiscard]] bool isStartStandHandlerSet() const;
 };
 
 #endif // WIFI_WEB_SERVICE_H

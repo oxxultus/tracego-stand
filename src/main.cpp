@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Preferences.h>
+#include <HTTPClient.h>
 
 #include "Config.h"
 #include "ConfigWebServer.h"
@@ -9,6 +10,10 @@
 // 함수 선언부 ===========================================================================================================
 void modulsSetting();                                               // [SETUP-1] 모듈을 초기 설정 하는 함수입니다.
 void setServerHandler();                                            // [SETUP-2] 핸들러 등록을 진행하는 함수입니다.
+void handleStartStandRequest(const String& uid);                    // [UTILITY-1] 작업 수행을 시작하는 함수 입니다.
+void sendCheckWorkingRequest(const String& uid);                    // [UTILITY-2] 작업 아이템을 확인하는 함수입니다.
+void sendEndWorkingRequest(const String& uid);                      // [UTILITY-3] 작업 아이템을 완료하는 함수입니다.
+void startStandMoter(const String& uid, const int& count);          // [MOTER-1] 선반 조작을 시작하는 함수입니다.
 
 // 객체 생성 =============================================================================================================
 WiFiConnector wifi;                             // WiFiConnect 객체 생성
@@ -260,6 +265,15 @@ void setServerHandler() {
                         <input id="ewl" value="%EWL%" type="text">
                     </fieldset>
 
+                    <fieldset>
+                        <legend>상품 UID 설정</legend>
+                        <label for="fpu">FirstProductUID</label>
+                        <input id="fpu" value="%FPU%" type="text">
+
+                        <label for="spu">SecondProductUID</label>
+                        <input id="spu" value="%SPU%" type="text">
+                    </fieldset>
+
                     <button onclick="saveConfig()">설정 저장</button>
                 </div>
             </body>
@@ -275,6 +289,9 @@ void setServerHandler() {
 
         html.replace("%CWL%", config.checkWorkingList);
         html.replace("%EWL%", config.endWorkingList);
+
+        html.replace("%FPU%", config.firstProductUid);
+        html.replace("%SPU%", config.secondProductUid);
         return html;
     });
 
@@ -294,6 +311,8 @@ void setServerHandler() {
         prefs.putInt("baudrate2", doc["baudrate2"] | 9600);
         prefs.putString("cwl", doc["checkWorkingList"] | "/check/working-list?uid=");
         prefs.putString("ewl",  doc["endWorkingList"]   | "/end/working-list?uid=");
+        prefs.putString("fpu", doc["firstProductUid"] | "c334db26");
+        prefs.putString("spu",  doc["secondProductUid"]   | "9a812ae7");
         prefs.end();
 
         return "{\"message\":\"설정이 저장되었습니다. 3초 후 재시작됩니다.\"}";
@@ -309,11 +328,13 @@ void setServerHandler() {
         doc["server_ip"]            = config.serverIP;
         doc["server_port"]          = config.serverPort;
         doc["inner_port"]           = config.innerPort;
+        doc["localIP"]              = config.localIP;
         doc["baudrate"]             = config.serialBaudrate;
         doc["baudrate2"]            = config.serial2Baudrate;
-        doc["checkWorkingList"]      = config.checkWorkingList;
-        doc["endWorkingList"]        = config.endWorkingList;
-        doc["localIP"]              = config.localIP;
+        doc["checkWorkingList"]     = config.checkWorkingList;
+        doc["endWorkingList"]       = config.endWorkingList;
+        doc["firstProductUid"]      = config.firstProductUid;
+        doc["secondProductUid"]     = config.secondProductUid;
         
         String output;
         serializeJson(doc, output);
@@ -368,6 +389,24 @@ void setServerHandler() {
         prefs.end();
     });
 
+
+    serverService->setStartStandHandler([](const String& uid) -> String {
+        Serial.println("[외부 핸들러] /start-stand 요청: UID = " + uid);
+
+        // 상품 UID가 유효한지 확인
+        if (uid == config.firstProductUid || uid == config.secondProductUid) {
+            Serial.println("[외부 핸들러] /start-stand 요청: 유효한 UID");
+
+            // 작업 아이템 확인 요청
+            handleStartStandRequest(uid);
+
+            return "200";
+        } else {
+            Serial.println("[외부 핸들러] /start-stand 요청: 유효하지 않은 UID");
+            return "400";
+        }
+    });
+
     Serial.println("[setServerHandler][1/2] 내장 서버 API 실행 함수 등록 확인 절차 시작");
         auto printHandlerStatus = [](const char* name, bool status) {
             Serial.print("[");
@@ -382,7 +421,102 @@ void setServerHandler() {
         printHandlerStatus("/status",    serverService->isStatusHandlerSet());
         printHandlerStatus("/status-view", serverService->isStatusViewHandlerSet());
         printHandlerStatus("/reset-config",  serverService->isResetConfigHandlerSet());
+        printHandlerStatus("/start-stand", serverService->isStartStandHandlerSet());
     Serial.println("[setServerHandler][2/2] 내장 서버 API 실행 함수 등록 절차 완료\n");
 }
 
-// LOOP FUNCTION =======================================================================================================
+// UTILITY FUNCTION =======================================================================================================
+
+// [UTILITY-1] 작업 수행을 시작하는 함수 입니다.
+void handleStartStandRequest(const String& uid) {
+    sendCheckWorkingRequest(uid);
+}
+
+// [UTILITY-2] 작업 아이템을 확인하는 함수입니다.
+void sendCheckWorkingRequest(const String& uid) {
+    HTTPClient http;
+
+    // 1. check 요청 URL 생성
+    String checkUrl = "http://" + String(config.serverIP) + ":" + String(config.serverPort) + String(config.checkWorkingList) + uid;
+    http.begin(checkUrl);
+
+    int code = http.GET(); // check 응답 코드
+    Serial.println("HTTP 상태 코드: " + String(code));
+
+    if (code == 200) {
+        String body = http.getString(); // 응답 본문 (JSON 등)
+        Serial.println("작업 있음 → 응답 내용: " + body);
+
+        // 1. JSON 파싱 (count 추출)
+        JsonDocument doc;  // 자동 크기 조절되도록]
+
+        DeserializationError error = deserializeJson(doc, body);
+
+        if (error) {
+            Serial.print("JSON 파싱 실패: ");
+            Serial.println(error.c_str());
+        } else {
+            int count = doc["count"]; // JSON에서 count 추출
+            Serial.println("작업 수량 (count): " + String(count));
+            
+            //TODO: 여기서 작업 아이템을 처리하는 로직을 추가할 수 있습니다.
+            startStandMoter(uid, count); // 선반 조작 시작
+        }
+    } else if (code == 204) {
+        Serial.println("서버에 작업 리스트가 없음 (204)");
+    } else if (code == 404) {
+        Serial.println("UID에 해당하는 작업 없음 (404)");
+    } else {
+        Serial.println("예상 외 응답 코드: " + String(code));
+    }
+
+    http.end(); // check 요청 종료
+}
+
+// [UTILITY-3] 작업 아이템을 완료하는 함수입니다.
+void sendEndWorkingRequest(const String& uid) {
+    HTTPClient endHttp;
+    String endUrl = "http://" + String(config.serverIP) + ":" + String(config.serverPort) + String(config.endWorkingList) + uid;
+
+    endHttp.begin(endUrl);
+    int endCode = endHttp.GET();
+
+    if (endCode == 200) {
+        String endBody = endHttp.getString();
+        Serial.println("작업 완료 요청 성공 → 응답 내용: " + endBody);
+    } else {
+        Serial.println("작업 완료 요청 실패 → 응답 코드: " + String(endCode));
+    }
+
+    endHttp.end(); // 요청 종료
+}
+
+// MOTER FUNCTION =========================================================================================================
+
+// [MOTER-1] 선반 조작을 시작하는 함수입니다.
+void startStandMoter(const String& uid, const int& count) {
+    if (uid == config.firstProductUid) {
+        Serial.println("[MOTER] 선반 조작 시작: 첫 번째 상품 UID");
+        // 첫 번째 상품 UID에 대한 선반 조작 로직을 여기에 추가합니다.
+        count; // count를 정수로 변환 (필요한 경우)
+        // 예: 모터를 회전시키거나 선반을 조작하는 코드 추가
+        // Serial.println("조작할 상품 수량: " + count);
+    } else if (uid == config.secondProductUid) {
+        Serial.println("[MOTER] 선반 조작 시작: 두 번째 상품 UID");
+        // 두 번째 상품 UID에 대한 선반 조작 로직을 여기에 추가합니다.
+        count; // count를 정수로 변환 (필요한 경우)
+        // 예: 모터를 회전시키거나 선반을 조작하는 코드 추가
+        // Serial.println("조작할 상품 수량: " + count);
+    } else {
+        Serial.println("[MOTER] 유효하지 않은 상품 UID: " + uid);
+    }
+
+    // 완료 요청 함수 호출
+    sendEndWorkingRequest(uid);
+    
+}
+
+// END OF PROGRAM =========================================================================================================
+// 이 파일은 TraceGo-Stand 프로젝트의 메인 파일로, 초기 설정 및 서버 핸들러 등록을 담당합니다.
+// WiFi 연결, 서버 시작, 모듈 초기화 등의 기능을 포함하고 있습니다.
+// 또한, 작업 아이템 확인 및 완료 요청을 위한 유틸리티 함수도 포함되어 있습니다.

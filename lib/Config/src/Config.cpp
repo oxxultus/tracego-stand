@@ -21,6 +21,9 @@ void Config::load() {
   checkWorkingList = prefs.getString("cwl", "/check/working-list?uid=");
   endWorkingList   = prefs.getString("ewl", "/end/working-list?uid=");
 
+  firstProductUid  = prefs.getString("fpu", "c334db26");
+  secondProductUid = prefs.getString("spu", "9a812ae7");
+
   prefs.end();
 }
 
@@ -40,6 +43,9 @@ void Config::save() {
 
   prefs.putString("cwl", checkWorkingList);
   prefs.putString("ewl", endWorkingList);  
+
+  prefs.putString("fpu", firstProductUid);
+  prefs.putString("spu", secondProductUid);
 
   prefs.end();
 }
