@@ -1,11 +1,25 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <HTTPClient.h>
+#include <ESP32Servo.h>
 
 #include "Config.h"
 #include "ConfigWebServer.h"
 #include "ServerService.h"
 #include "WiFiConnector.h"
+
+#define MOTOR1_PWM_PIN    5   // PWM 핀
+#define MOTOR1_DIR_PIN    4
+#define MOTOR1_DIR2_PIN   16
+
+// 모터2 핀
+#define MOTOR2_PWM_PIN    18  // PWM 핀
+#define MOTOR2_DIR_PIN    17
+#define MOTOR2_DIR2_PIN   19
+
+#define PWM_FREQ          1000   // 1kHz
+#define PWM_RESOLUTION    8      // 8비트 (0~255)
+
 
 // 함수 선언부 ===========================================================================================================
 void modulsSetting();                                               // [SETUP-1] 모듈을 초기 설정 하는 함수입니다.
@@ -21,6 +35,8 @@ void downRfidCard(const String& uid);                               // [MOTER-3]
 WiFiConnector wifi;                             // WiFiConnect 객체 생성
 ServerService* serverService = nullptr;         // WebService 객체 생성
 ConfigWebServer* configWebServer = nullptr;     // ConfigWebServer 객체 생성
+Servo servo1;
+Servo servo2;
 
 // 프로그램 설정 및 시작 ====================================================================================================
 
@@ -67,11 +83,29 @@ void modulsSetting() {
     Serial.begin(config.serialBaudrate);            // 시리얼 설정
 
     wifi.connect();                                 // wifi 연결
+
+    servo1.attach(13); // 첫 번째 상품용 서보 핀
+    servo2.attach(19); // 두 번째 상품용 서보 핀
+    servo1.write(0); // 초기 위치 설정 (0도)
+
+    pinMode(MOTOR1_DIR_PIN, OUTPUT);
+    pinMode(MOTOR1_DIR2_PIN, OUTPUT);
+    pinMode(MOTOR2_DIR_PIN, OUTPUT);
+    pinMode(MOTOR2_DIR2_PIN, OUTPUT);
+
+    // 단방향: 방향 고정
+    digitalWrite(MOTOR1_DIR_PIN, LOW);
+    digitalWrite(MOTOR1_DIR2_PIN, LOW);
+
+    digitalWrite(MOTOR2_DIR_PIN, LOW);
+    digitalWrite(MOTOR2_DIR2_PIN, LOW);
+
+
 }
 
 // [SETUP-2] 핸들러 등록을 진행하는 함수입니다.
 void setServerHandler() {
-    
+
     // [메인 페이지 핸들러] 기본 설정 페이지를 반환하는 핸들러입니다.
     serverService->setMainPageHandler([]() -> String {
         return R"rawliteral(
@@ -337,7 +371,7 @@ void setServerHandler() {
         doc["endWorkingList"]       = config.endWorkingList;
         doc["firstProductUid"]      = config.firstProductUid;
         doc["secondProductUid"]     = config.secondProductUid;
-        
+
         String output;
         serializeJson(doc, output);
         return output;
@@ -390,7 +424,7 @@ void setServerHandler() {
         prefs.clear();  // 모든 설정 삭제
         prefs.end();
     });
-    
+
     // TODO: 마이크로 서보 모터 작동로직 추가
     // RFID 카드를 들어올리는 로직이 필요하다 외부에 접근 가능하게 해야한다 예) 카트-> 선반으로 명령전달 시 로직이 실행되어야함
 
@@ -575,48 +609,66 @@ void sendEndWorkingRequest(const String& uid) {
 
 // [MOTER-1] 선반 조작을 시작하는 함수입니다.
 void startStandMoter(const String& uid, const int& count) {
+    int runTime = count * 3000;  // 개수당 0.5초 예시 (ms)
+    const int PWM_VALUE = 50;  // 출력을 줄인 PWM 값
+    const int PWM_CH1 = 0;
+    const int PWM_CH2 = 1;
+
     if (uid == config.firstProductUid) {
         Serial.println("[MOTER] 선반 조작 시작: 첫 번째 상품 UID");
-        // 첫 번째 상품 UID에 대한 선반 조작 로직을 여기에 추가합니다.
-        count; // count를 정수로 변환 (필요한 경우)
-        // 예: 모터를 회전시키거나 선반을 조작하는 코드 추가
-        // Serial.println("조작할 상품 수량: " + count);
+
+        digitalWrite(MOTOR1_DIR_PIN, HIGH);
+        digitalWrite(MOTOR1_DIR2_PIN, LOW);
+        ledcWrite(PWM_CH1, PWM_VALUE);
+
+        delay(runTime);
+
+        digitalWrite(MOTOR1_DIR_PIN, LOW);
+        digitalWrite(MOTOR1_DIR2_PIN, LOW);
+
     } else if (uid == config.secondProductUid) {
         Serial.println("[MOTER] 선반 조작 시작: 두 번째 상품 UID");
-        // 두 번째 상품 UID에 대한 선반 조작 로직을 여기에 추가합니다.
-        count; // count를 정수로 변환 (필요한 경우)
-        // 예: 모터를 회전시키거나 선반을 조작하는 코드 추가
-        // Serial.println("조작할 상품 수량: " + count);
+
+        digitalWrite(MOTOR2_DIR_PIN, HIGH);
+        digitalWrite(MOTOR2_DIR2_PIN, LOW);
+        ledcWrite(PWM_CH2, PWM_VALUE);
+
+        delay(runTime);
+
+        ledcWrite(PWM_CH2, 0);
+
     } else {
         Serial.println("[MOTER] 유효하지 않은 상품 UID: " + uid);
     }
 
-    // 완료 요청 함수 호출
     sendEndWorkingRequest(uid);
-    
 }
+
 
 // [MOTER-2] RFID 카트를 들어올리는 함수입니다.
 void upRfidCard(const String& uid) {
     Serial.println("[MOTER] RFID 카드 들어올리기 시작: UID = " + uid);
+
     if (uid == config.firstProductUid) {
         Serial.println("[MOTER] RFID 카드 들어올리기 시작: 첫 번째 상품 UID");
-        
+       //  servo1.write(90); // 첫 번째 상품 서보를 90도로 이동 (들어올리기)
+
     } else if (uid == config.secondProductUid) {
         Serial.println("[MOTER] RFID 카드 들어올리기 시작: 두 번째 상품 UID");
-        
+       //  servo2.write(90); // 첫 번째 상품 서보를 90도로 이동 (들어올리기)
     }
 }
 
 // [MOTER-3] RFID 카트를 내리는 함수입니다.
 void downRfidCard(const String& uid) {
     Serial.println("[MOTER] RFID 카드 내려놓기 시작: UID = " + uid);
-    
+
     if (uid == config.firstProductUid) {
         Serial.println("[MOTER] RFID 카드 내려놓기 시작: 첫 번째 상품 UID");
 
+
     } else if (uid == config.secondProductUid) {
         Serial.println("[MOTER] RFID 카드 내려놓기 시작: 두 번째 상품 UID");
-        
+
     }
 }
