@@ -255,6 +255,8 @@ void setServerHandler() {
                         baudrate2: parseInt(document.getElementById("baudrate2").value),
                         checkWorkingList: document.getElementById("cwl").value,
                         endWorkingList: document.getElementById("ewl").value,
+                        firstProductUid: document.getElementById("fpu").value,
+                        secondProductUid: document.getElementById("spu").value
                     };
 
                     fetch("/update-config", {
@@ -635,7 +637,8 @@ void startStandMoter(const String& uid, const int& count) {
 
         delay(runTime);
 
-        ledcWrite(PWM_CH2, 0);
+        digitalWrite(MOTOR2_DIR_PIN, LOW);
+        digitalWrite(MOTOR2_DIR2_PIN, LOW);
 
     } else {
         Serial.println("[MOTER] 유효하지 않은 상품 UID: " + uid);

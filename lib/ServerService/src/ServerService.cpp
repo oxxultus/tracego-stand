@@ -116,6 +116,7 @@ void ServerService::setupRoutes() {
             }
 
             String result = startStandHandler(uid);  // 외부 핸들러 실행
+            
 
             if (result == "200") {
                 server->send(200, "text/plain", "작업 시작됨");
